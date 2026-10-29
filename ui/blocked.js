@@ -1,4 +1,4 @@
-const target = new URLSearchParams(location.search).get("url") || "";
+const target = blockedTarget(location.href);
 const isWeb = /^https?:/i.test(target);
 let host = target;
 try {

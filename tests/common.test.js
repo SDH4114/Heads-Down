@@ -29,6 +29,7 @@ function load(response, locale = "en") {
     setTimeout,
     clearTimeout,
     Date,
+    URL,
   });
   ctx.globalThis = ctx;
   vm.runInContext(I18N, ctx);
@@ -136,4 +137,14 @@ test("startCountdown corrects for clock skew between pages and background", () =
   const id = ctx.startCountdown(el, { timerEnd: bgNow + 5 * 60 * 1000, now: bgNow });
   clearInterval(id);
   assert.equal(el.textContent, "5:00");
+});
+
+test("blockedTarget reads the url from either block page form", () => {
+  const { ctx } = load();
+  const page = "chrome-extension://id/ui/blocked.html";
+  const url = "https://youtube.com/watch?v=1&t=2";
+  assert.equal(ctx.blockedTarget(page + "?url=" + encodeURIComponent(url)), url, "background redirect");
+  assert.equal(ctx.blockedTarget(page + "#" + url), url, "Chromium rule redirect keeps & and ?");
+  assert.equal(ctx.blockedTarget(page), "");
+  assert.equal(ctx.blockedTarget("not a url"), "");
 });

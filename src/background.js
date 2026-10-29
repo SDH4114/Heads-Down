@@ -1,8 +1,13 @@
 // Single gatekeeper: blocks navigation and is the only place that changes settings.
 // Rules live in policy.js (pure); this file holds the effects: listeners, tabs, timers, storage.
+// Firefox (MV2) runs it as a persistent background page and blocks with webRequest. Chrome and
+// Edge (MV3) run it as a service worker that can stop at any time and block with declarativeNetRequest.
 const { lock, storage, policy, i18n } = FG;
 const { t } = i18n;
 const { fail } = policy;
+
+// Present only in the Chromium build, which requests the declarativeNetRequest permission.
+const dnr = browser.declarativeNetRequest;
 
 let state = null;
 const ready = storage.load().then((s) => (state = s));
@@ -23,7 +28,10 @@ function replaceState(next) {
   const rulesChanged = ["enabled", "mode", "blocklist", "allowlist", "timerEnd"].some(changed);
   state = next;
   if (runChanged) onPomodoroTick();
-  if (runChanged || rulesChanged) sweepTabs();
+  if (runChanged || rulesChanged) {
+    syncRules();
+    sweepTabs();
+  }
 }
 
 const blockReason = (url) => policy.blockReason(state, url, Date.now());
@@ -36,11 +44,64 @@ function decide(details) {
   return blockReason(details.url) ? { redirectUrl: blockedPage(details.url) } : {};
 }
 
-browser.webRequest.onBeforeRequest.addListener(
-  (details) => (state ? decide(details) : ready.then(() => decide(details), () => ({}))),
-  { urls: ["<all_urls>"], types: ["main_frame"] },
-  ["blocking"]
-);
+if (!dnr) {
+  browser.webRequest.onBeforeRequest.addListener(
+    (details) => (state ? decide(details) : ready.then(() => decide(details), () => ({}))),
+    { urls: ["<all_urls>"], types: ["main_frame"] },
+    ["blocking"]
+  );
+}
+
+// Chromium: redirect rules are precomputed (src/dnr.js), so they are rebuilt after every change
+// and at every timer or phase end. Dynamic rules persist, so blocking also works before the
+// service worker starts. Updates run one at a time, each with the latest state.
+let rulesSync = Promise.resolve();
+let appliedRules = null; // JSON of the rules this worker last wrote; null after a restart
+
+function syncRules() {
+  if (!dnr) return rulesSync;
+  rulesSync = rulesSync
+    .then(async () => {
+      const now = Date.now();
+      const rules = FG.dnr.redirectRules(state, now, browser.runtime.getURL("ui/blocked.html"));
+      const json = JSON.stringify(rules);
+      if (json !== appliedRules) {
+        const old = await dnr.getDynamicRules();
+        await dnr.updateDynamicRules({ removeRuleIds: old.map((r) => r.id), addRules: rules });
+        appliedRules = json;
+      }
+      await scheduleWake(now);
+    })
+    .catch((error) => console.error("Could not update blocking rules:", error));
+  return rulesSync;
+}
+
+// A setTimeout works while the worker runs; the alarm wakes a stopped worker. Its name carries
+// the boundary, so a fresh worker knows which phase change it still has to announce.
+const WAKE = "wake:";
+let wakeTimer = null;
+
+async function scheduleWake(now) {
+  clearTimeout(wakeTimer);
+  wakeTimer = null;
+  const at = FG.dnr.nextChange(state, now);
+  if (at) wakeTimer = setTimeout(() => onWake(at), Math.min(2147483647, Math.max(250, at - Date.now() + 250)));
+  await browser.alarms.clearAll();
+  if (at) await browser.alarms.create(WAKE + at, { when: at + 250 });
+}
+
+function onWake(boundary) {
+  syncRules();
+  const status = publicState().pomodoroStatus;
+  if (status && status.phaseStart >= boundary) phaseChanged(status);
+}
+
+if (dnr) {
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (!alarm.name.startsWith(WAKE)) return;
+    ready.then(() => onWake(Number(alarm.name.slice(WAKE.length))), () => {});
+  });
+}
 
 // webRequest misses pages restored from the back/forward cache, so check every committed URL too.
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -66,10 +127,22 @@ async function sweepTabs() {
   }
 }
 
-// Pomodoro phase changes: notify and sweep tabs. The background page is persistent (MV2),
+// Pomodoro phase changes: notify and sweep tabs. In Firefox the background page is persistent,
 // so a plain setTimeout is enough; blocking itself never depends on it firing on time.
+// In Chromium a stopped worker loses these, and onWake announces the change instead.
 let phaseTimer = null;
 let lastPhaseKey = null;
+let announcedKey = null; // the phase change last notified, so the timeout and the alarm notify once
+
+const phaseKey = (phase) => `${phase.phase}:${phase.phaseEnd}`;
+
+function phaseChanged(phase) {
+  const key = phaseKey(phase);
+  if (key === announcedKey) return;
+  announcedKey = key;
+  notify(phaseText(phase.phase, state.pomodoroRun));
+  sweepTabs();
+}
 
 function phaseText(phase, run) {
   if (phase === "work") return t("notifyWork", run.workMin);
@@ -78,8 +151,10 @@ function phaseText(phase, run) {
 }
 
 function notify(message) {
+  // Chromium requires iconUrl and does not accept SVG for it.
+  const iconUrl = browser.runtime.getURL("icons/icon-128.png");
   browser.notifications
-    .create({ type: "basic", title: t("extName"), message })
+    .create({ type: "basic", iconUrl, title: t("extName"), message })
     .catch(() => {});
 }
 
@@ -91,11 +166,8 @@ function onPomodoroTick() {
     lastPhaseKey = null;
     return;
   }
-  const key = `${phase.phase}:${phase.phaseEnd}`;
-  if (lastPhaseKey !== null && key !== lastPhaseKey) {
-    notify(phaseText(phase.phase, state.pomodoroRun));
-    sweepTabs();
-  }
+  const key = phaseKey(phase);
+  if (lastPhaseKey !== null && key !== lastPhaseKey) phaseChanged(phase);
   lastPhaseKey = key;
   // A clock rollback can put the end beyond setTimeout's signed 32-bit delay limit.
   phaseTimer = setTimeout(onPomodoroTick, Math.min(2147483647, Math.max(250, phase.phaseEnd - Date.now() + 250)));
@@ -143,7 +215,12 @@ const handlers = {
   getState: async () => publicState(),
 
   // Used by the blocked page to show why it is blocked and when the site is open again.
-  check: async ({ url }) => ({ ...publicState(), reason: blockReason(String(url || "")) }),
+  // In Chromium a just-woken worker may still have rules from before a timer or phase ended;
+  // refreshing them here makes "Open site" work as soon as the page offers it.
+  check: async ({ url }) => {
+    await syncRules();
+    return { ...publicState(), reason: blockReason(String(url || "")) };
+  },
 
   update: serial(({ patch, password }) => applyUpdate(patch, password)),
 
@@ -222,7 +299,7 @@ const handlers = {
   }),
 };
 
-browser.runtime.onMessage.addListener(async (msg) => {
+async function respond(msg) {
   try {
     await ready;
     const handler = msg && typeof msg.type === "string" && Object.hasOwn(handlers, msg.type) && handlers[msg.type];
@@ -231,11 +308,19 @@ browser.runtime.onMessage.addListener(async (msg) => {
   } catch (e) {
     return { ok: false, error: e.message, code: e.code };
   }
+}
+
+// sendResponse + `return true` works in Firefox and every Chromium version; returning a promise
+// from the listener only works in Chrome 148+.
+browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  respond(msg).then(sendResponse);
+  return true;
 });
 
 ready.then(() => {
   onPomodoroTick();
   sweepTabs();
+  syncRules();
 }).catch((error) => {
   console.error("Could not load settings:", error);
 });

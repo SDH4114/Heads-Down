@@ -19,7 +19,12 @@ function makeBrowser(initial = {}, tabs = []) {
   const updates = [];
   const notifications = [];
   const browser = {
-    notifications: { create: async (opts) => notifications.push(opts.message) },
+    notifications: {
+      create: async (opts) => {
+        assert.match(opts.iconUrl, /\/icons\/icon-128\.png$/, "Chromium rejects notifications without iconUrl");
+        notifications.push(opts.message);
+      },
+    },
     i18n: {
       getMessage: (key, subs = []) => {
         const entry = EN[key];
@@ -74,6 +79,8 @@ function makeClock(start = Date.UTC(2026, 0, 1, 9)) {
     setTimeout: (fn, ms) => (timers.push({ id: nextId, at: now + ms, fn }), nextId++),
     clearTimeout: (id) => (timers = timers.filter((t) => t.id !== id)),
     pending: () => timers.length,
+    // Moves time without firing timers, like a stopped service worker whose timeouts are gone.
+    jump: (ms) => (now += ms),
     delays: () => timers.map((t) => t.at - now),
     advance(ms) {
       const end = now + ms;
@@ -105,7 +112,10 @@ async function boot(initial, tabs, clock = makeClock(), configure = () => {}) {
     clearTimeout: clock.clearTimeout,
   });
   for (const file of SCRIPTS) vm.runInContext(fs.readFileSync(path.join(ROOT, file), "utf8"), ctx, { filename: file });
-  const send = (type, payload = {}) => env.listeners.message[0]({ type, ...payload });
+  // The listener answers through sendResponse and returns true (works in Firefox and Chromium).
+  const dispatch = (msg) =>
+    new Promise((resolve) => assert.equal(env.listeners.message[0](msg, {}, resolve), true));
+  const send = (type, payload = {}) => dispatch({ type, ...payload });
   await send("getState"); // waits for initial load
   await new Promise((r) => setImmediate(r)); // let the startup tab sweep finish
   const request = async (url) => {
@@ -116,7 +126,7 @@ async function boot(initial, tabs, clock = makeClock(), configure = () => {}) {
     clock.advance(ms);
     await new Promise((r) => setImmediate(r));
   };
-  return { ...env, send, request, clock, advance, warnings, errors, lock: ctx.FG.lock,
+  return { ...env, dispatch, send, request, clock, advance, warnings, errors, lock: ctx.FG.lock,
     sweep: () => vm.runInContext("sweepTabs()", ctx) };
 }
 
@@ -518,7 +528,7 @@ test("addSite refuses non-web pages; unknown messages fail cleanly", async () =>
   assert.equal((await b.send("addSite", { url: BLOCKED })).ok, false);
   assert.equal((await b.send("addSite", {})).ok, false);
   assert.equal((await b.send("nope")).ok, false);
-  assert.equal((await b.listeners.message[0](undefined)).ok, false);
+  assert.equal((await b.dispatch(undefined)).ok, false);
 });
 
 test("inherited object methods are not runtime handlers", async () => {
@@ -645,4 +655,155 @@ test("clock rollback cannot overflow the pomodoro timeout", async () => {
   const b = await boot({ pomodoroRun: { ...POMO, startedAt: clock.Date.now() + 40 * 24 * 60 * MIN } }, [], clock);
   assert.ok(b.clock.delays()[0] <= 2147483647);
   assert.ok(b.clock.delays()[0] >= 250);
+});
+
+// Chromium (MV3): no webRequest; blocking is done by declarativeNetRequest rules, and alarms wake
+// the service worker. The fakes keep the rules and alarms the background writes.
+function chromium(env) {
+  delete env.browser.webRequest;
+  env.dnr = { rules: [], writes: 0 };
+  env.browser.declarativeNetRequest = {
+    getDynamicRules: async () => plain(env.dnr.rules),
+    updateDynamicRules: async ({ removeRuleIds, addRules }) => {
+      env.dnr.rules = env.dnr.rules.filter((r) => !removeRuleIds.includes(r.id)).concat(plain(addRules));
+      env.dnr.writes++;
+    },
+  };
+  env.alarms = new Map();
+  const onAlarm = [];
+  env.browser.alarms = {
+    create: async (name, { when }) => void env.alarms.set(name, when),
+    clearAll: async () => (env.alarms.clear(), true),
+    onAlarm: { addListener: (fn) => onAlarm.push(fn) },
+  };
+  env.fireAlarm = (name) => onAlarm.forEach((fn) => fn({ name, scheduledTime: env.alarms.get(name) }));
+}
+
+const bootChromium = (initial, tabs, clock) => boot(initial, tabs, clock, chromium);
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+// The subset of declarativeNetRequest matching these rules use, for a main-frame request.
+const domainIn = (host, list) => list.some((d) => host === d || host.endsWith("." + d));
+function dnrMatch(rules, url) {
+  const host = new URL(url).hostname;
+  const rule = rules.find(({ condition: c }) =>
+    new RegExp(c.regexFilter, "i").test(url) &&
+    c.resourceTypes.includes("main_frame") &&
+    (!c.requestDomains || domainIn(host, c.requestDomains)) &&
+    (!c.excludedRequestDomains || !domainIn(host, c.excludedRequestDomains)));
+  return rule ? rule.action.redirect.regexSubstitution.replace("\\0", url.match(rule.condition.regexFilter)[0]) : null;
+}
+
+test("chromium: no webRequest listener; rules follow focus, mode and lists", async () => {
+  const b = await bootChromium({ blocklist: ["youtube.com"] });
+  assert.equal(b.listeners.request.length, 0);
+  assert.deepEqual(b.dnr.rules, [], "focus off blocks nothing");
+
+  await b.send("update", { patch: { enabled: true } });
+  await settle();
+  const url = "https://m.youtube.com/watch?v=1&t=2";
+  assert.equal(dnrMatch(b.dnr.rules, url), BLOCKED + "#" + url, "the full url survives after #");
+  assert.equal(dnrMatch(b.dnr.rules, "https://example.com/"), null);
+  assert.equal(dnrMatch(b.dnr.rules, "https://notyoutube.com/"), null);
+
+  await b.send("update", { patch: { mode: "allowlist", allowlist: ["example.org"] } });
+  await settle();
+  assert.equal(dnrMatch(b.dnr.rules, "https://docs.example.org/"), null);
+  assert.ok(dnrMatch(b.dnr.rules, "https://youtube.com/"));
+  assert.ok(dnrMatch(b.dnr.rules, "http://anything.net/"));
+
+  await b.send("update", { patch: { enabled: false } });
+  await settle();
+  assert.deepEqual(b.dnr.rules, []);
+});
+
+test("chromium: rules block exactly what blockReason blocks", async () => {
+  const urls = ["https://youtube.com/", "https://www.youtube.com/a", "https://tiktok.com/", "https://example.org/",
+    "https://sub.example.org/", "http://localhost:8080/", "https://news.site.net/"];
+  const now = Date.UTC(2026, 0, 1, 9);
+  const states = [];
+  for (const enabled of [false, true])
+    for (const mode of ["blocklist", "allowlist"])
+      for (const lists of [[], ["youtube.com", "example.org"]])
+        for (const timer of [null, now + 5 * MIN])
+          for (const run of [null, { ...POMO, startedAt: now }, { ...POMO, startedAt: now - 26 * MIN },
+            { ...POMO, useMainRules: true, blocklist: [], startedAt: now }])
+            states.push({ enabled, mode, blocklist: lists, allowlist: lists, timerEnd: timer, pomodoroRun: run });
+  for (const s of states) {
+    const b = await bootChromium(s, [], makeClock(now));
+    await settle();
+    for (const url of urls) {
+      const { reason } = (await b.send("check", { url })).state;
+      assert.equal(Boolean(dnrMatch(b.dnr.rules, url)), Boolean(reason), `${url} in ${JSON.stringify(s)}`);
+    }
+  }
+});
+
+test("chromium: lock timer end removes its rules; an alarm is set for a stopped worker", async () => {
+  const b = await bootChromium({ blocklist: ["youtube.com"] });
+  await b.send("startTimer", { minutes: 5 });
+  await settle();
+  const end = (await b.send("getState")).state.timerEnd;
+  assert.ok(dnrMatch(b.dnr.rules, "https://youtube.com/"));
+  assert.deepEqual([...b.alarms], [["wake:" + end, end + 250]]);
+
+  await b.advance(5 * MIN + 1000);
+  await settle();
+  assert.deepEqual(b.dnr.rules, []);
+  assert.equal(b.alarms.size, 0, "nothing left to wake for");
+});
+
+test("chromium: check refreshes rules a stopped worker could not update in time", async () => {
+  const b = await bootChromium({ blocklist: ["youtube.com"] });
+  await b.send("startTimer", { minutes: 5 });
+  await settle();
+  b.clock.jump(6 * MIN); // the worker was stopped: its timeout never ran
+  assert.ok(dnrMatch(b.dnr.rules, "https://youtube.com/"), "stale rule still there");
+  const res = await b.send("check", { url: "https://youtube.com/" });
+  assert.equal(res.state.reason, null);
+  assert.deepEqual(b.dnr.rules, [], "check rewrote the rules before answering");
+});
+
+test("chromium: pomodoro phases switch rules; a fresh worker announces the change once", async () => {
+  const clock = makeClock();
+  const b = await bootChromium({}, [], clock);
+  await b.send("savePomodoro", { config: POMO });
+  await b.send("startPomodoro");
+  await settle();
+  assert.ok(dnrMatch(b.dnr.rules, "https://youtube.com/"), "work blocks");
+  const breakAt = clock.Date.now() + 25 * MIN;
+  assert.ok(b.alarms.has("wake:" + breakAt));
+
+  await b.advance(25 * MIN + 1000);
+  await settle();
+  assert.deepEqual(b.dnr.rules, [], "break opens sites");
+  assert.equal(b.notifications.filter((n) => n.startsWith("Break")).length, 1, "timeout and wake notify once");
+
+  // The worker stops during the break and an alarm restarts it after the next boundary.
+  const workAt = breakAt + 5 * MIN;
+  clock.jump(workAt + 1000 - clock.Date.now());
+  const fresh = await bootChromium({ ...b.store }, [{ id: 4, url: "https://youtube.com/" }], clock);
+  await settle();
+  assert.equal(fresh.notifications.length, 0, "startup alone does not know a phase just changed");
+  fresh.fireAlarm("wake:" + workAt);
+  await settle();
+  assert.deepEqual(fresh.notifications, ["Work: 25 min. Distracting sites are blocked."]);
+  assert.ok(dnrMatch(fresh.dnr.rules, "https://youtube.com/"));
+  fresh.fireAlarm("wake:" + workAt);
+  await settle();
+  assert.equal(fresh.notifications.length, 1, "a repeated alarm does not notify twice");
+});
+
+test("chromium: a lock timer alarm does not re-announce the running phase", async () => {
+  const clock = makeClock();
+  const start = clock.Date.now();
+  const b = await bootChromium({ blocklist: ["youtube.com"], timerEnd: start + 10 * MIN,
+    pomodoroRun: { ...POMO, startedAt: start } }, [], clock);
+  await settle();
+  assert.ok(b.alarms.has("wake:" + (start + 10 * MIN)), "the timer ends before the work phase");
+  clock.jump(10 * MIN + 1000);
+  b.fireAlarm("wake:" + (start + 10 * MIN));
+  await settle();
+  assert.deepEqual(b.notifications, []);
+  assert.ok(b.alarms.has("wake:" + (start + 25 * MIN)), "next wake is the phase end");
 });

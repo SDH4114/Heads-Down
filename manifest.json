@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extName__",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "browser_specific_settings": {
@@ -27,11 +27,13 @@
   ],
   "background": {
     "scripts": [
+      "src/compat.js",
       "src/matcher.js",
       "src/lock.js",
       "src/pomodoro.js",
       "src/i18n.js",
       "src/policy.js",
+      "src/dnr.js",
       "src/storage.js",
       "src/background.js"
     ]

@@ -153,6 +153,17 @@ function phaseProgress(status, left) {
   return Math.min(1, Math.max(0, 1 - left / length));
 }
 
+// The original address from a block page URL: "?url=" when the background redirects a tab,
+// "#<url>" when a Chromium redirect rule does (see src/dnr.js). "" if there is none.
+function blockedTarget(href) {
+  try {
+    const url = new URL(href);
+    return url.searchParams.get("url") || url.hash.slice(1);
+  } catch {
+    return "";
+  }
+}
+
 function showMessage(el, text, isError = false) {
   el.textContent = text;
   el.classList.toggle("error", isError);

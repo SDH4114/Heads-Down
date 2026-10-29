@@ -82,7 +82,7 @@ $("add-site").addEventListener("click", () =>
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     let url = tab && tab.url;
     const blockedPage = browser.runtime.getURL("ui/blocked.html");
-    if (url && url.startsWith(blockedPage + "?")) url = new URL(url).searchParams.get("url");
+    if (url && url.startsWith(blockedPage)) url = blockedTarget(url);
     return withPassword((password) => send("addSite", { url, password }));
   })
 );
