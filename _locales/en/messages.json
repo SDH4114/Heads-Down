@@ -1,5 +1,5 @@
 {
-  "extName": { "message": "Focus Guard" },
+  "extName": { "message": "Heads Down" },
   "extDescription": { "message": "Block distracting sites with a blocklist or allowlist, a Pomodoro timer, and password or timer locks." },
 
   "notifyWork": { "message": "Work: $1 min. Distracting sites are blocked." },
@@ -60,7 +60,7 @@
   "btnAllowSite": { "message": "Allow this site" },
   "pomoIdleLine": { "message": "$1/$2 min · long break $3 min after $4" },
 
-  "optionsTitle": { "message": "Focus Guard settings" },
+  "optionsTitle": { "message": "Heads Down settings" },
   "settings": { "message": "Settings" },
   "bannerLocked": { "message": "Lock timer running. Settings are locked for" },
   "lblCurrentPassword": { "message": "Current password" },
@@ -104,7 +104,7 @@
   "msgPasswordRemoved": { "message": "Password removed." },
   "msgTimerStarted": { "message": "Lock timer started." },
 
-  "blockedTitle": { "message": "Blocked · Focus Guard" },
+  "blockedTitle": { "message": "Blocked · Heads Down" },
   "titleBlocked": { "message": "Back to work." },
   "titleFree": { "message": "You're free." },
   "thisSite": { "message": "This site" },

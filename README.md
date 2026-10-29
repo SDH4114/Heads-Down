@@ -1,4 +1,4 @@
-# Focus Guard
+# Heads Down
 
 A Firefox / Zen extension that blocks distracting websites, with a Pomodoro timer and optional password and timer locks.
 
@@ -63,4 +63,4 @@ tests/            node:test suites; tests/e2e/ Selenium scenario for Zen
 ## Limits
 The password and timer protect the extension's own settings. The extension can still be disabled or removed in `about:addons`.
 
-Private windows are not covered until you allow the extension there: `about:addons` → Focus Guard → **Run in Private Windows** → Allow.
+Private windows are not covered until you allow the extension there: `about:addons` → Heads Down → **Run in Private Windows** → Allow.

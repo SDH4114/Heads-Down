@@ -84,7 +84,7 @@
         await browser.storage.local.set(state);
       } catch (error) {
         // A failed repair must not discard the rules we already read successfully.
-        console.error("Focus Guard could not persist repaired settings:", error);
+        console.error("Heads Down could not persist repaired settings:", error);
       }
     }
     return state;

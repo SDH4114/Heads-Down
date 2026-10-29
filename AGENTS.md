@@ -1,4 +1,4 @@
-# AGENTS.md: Focus Guard
+# AGENTS.md: Heads Down
 
 ## Purpose
 A Firefox/Zen WebExtension that blocks distracting sites so the user can stay on one task. The author uses it for IELTS practice, but nothing is hardcoded: every list and lock is user-configured. Planned for publication on addons.mozilla.org.
@@ -12,7 +12,7 @@ A Firefox/Zen WebExtension that blocks distracting sites so the user can stay on
 - UI and messages in English and Russian (`_locales`).
 
 ## Status
-Active, v0.3.2. Node tests (98) and `web-ext lint` pass (one Android-only minimum-version warning). E2E in real Zen passes 100 checks; five additional browser checks verified allowing the original site through the popup on a blocked page. Background tests cover notification API calls; OS notification display is not checked. Not published yet. Before AMO, settle the final `gecko.id` (currently `focus-guard@local`; it becomes permanent with the first upload) and the name ("Focus Guard" is taken several times on AMO).
+Active, v0.3.2. Node tests (98) and `web-ext lint` pass (one Android-only minimum-version warning). E2E in real Zen passes 100 checks; five additional browser checks verified allowing the original site through the popup on a blocked page. Background tests cover notification API calls; OS notification display is not checked. Not published yet. Before AMO, settle the final `gecko.id` (currently `heads-down@local`; it becomes permanent with the first upload) and the name ("Heads Down" is taken several times on AMO).
 
 ## Stack
 Plain JavaScript, no build step, no dependencies. Manifest V2, persistent background. Tests use `node:test` (Node 22). E2E uses Python + Selenium + geckodriver.

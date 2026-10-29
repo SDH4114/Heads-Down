@@ -1,5 +1,5 @@
 {
-  "extName": { "message": "Focus Guard" },
+  "extName": { "message": "Heads Down" },
   "extDescription": { "message": "Блокирует отвлекающие сайты: чёрный или белый список, Pomodoro-таймер, защита паролем и таймером." },
 
   "notifyWork": { "message": "Работа: $1 мин. Отвлекающие сайты заблокированы." },
@@ -60,7 +60,7 @@
   "btnAllowSite": { "message": "Разрешить этот сайт" },
   "pomoIdleLine": { "message": "$1/$2 мин · большой перерыв $3 мин после $4" },
 
-  "optionsTitle": { "message": "Настройки Focus Guard" },
+  "optionsTitle": { "message": "Настройки Heads Down" },
   "settings": { "message": "Настройки" },
   "bannerLocked": { "message": "Идёт таймер блокировки. Настройки заблокированы ещё" },
   "lblCurrentPassword": { "message": "Текущий пароль" },
@@ -104,7 +104,7 @@
   "msgPasswordRemoved": { "message": "Пароль удалён." },
   "msgTimerStarted": { "message": "Таймер блокировки запущен." },
 
-  "blockedTitle": { "message": "Заблокировано · Focus Guard" },
+  "blockedTitle": { "message": "Заблокировано · Heads Down" },
   "titleBlocked": { "message": "Возвращайтесь к делу." },
   "titleFree": { "message": "Можно." },
   "thisSite": { "message": "Этот сайт" },

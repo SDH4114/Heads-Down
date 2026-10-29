@@ -1,4 +1,4 @@
-/* Focus Guard shared styles: popup, options and blocked page.
+/* Heads Down shared styles: popup, options and blocked page.
    Order: tokens, base, form controls, components, page layouts, a11y media queries.
    State is driven from JS through data attributes: [data-state] on pills/body, [data-phase] on rings.
    No text-transform anywhere: the e2e reads visible text. */

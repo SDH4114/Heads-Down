@@ -1,4 +1,4 @@
-"""E2E test of Focus Guard in a real Zen browser with a throwaway profile.
+"""E2E test of Heads Down in a real Zen browser with a throwaway profile.
 
 Test domains resolve to 127.0.0.1 via network.dns.localDomains, served by a local http.server,
 so no real network is used. Takes about 3 minutes, including the 1-minute lock timer and Pomodoro work scenarios.
@@ -66,7 +66,7 @@ opts.binary_location = ZEN
 opts.add_argument("-headless")
 opts.set_preference("network.dns.localDomains", ",".join(DOMAINS))
 opts.set_preference(
-    "extensions.webextensions.uuids", json.dumps({"focus-guard@local": UUID})
+    "extensions.webextensions.uuids", json.dumps({"heads-down@local": UUID})
 )
 opts.set_preference("browser.sessionstore.resume_from_crash", False)
 # Texts are checked in English; pin the UI locale regardless of the machine's language.
