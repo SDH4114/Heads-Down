@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title data-i18n="optionsTitle">Focus Guard settings</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span><span data-i18n="extName">Focus Guard</span> <span class="brand-sub" data-i18n="settings">Settings</span></h1>
+    <div class="cluster">
+      <span id="pomo-pill" class="pill hidden" data-state="work"></span>
+      <span id="lock-pill" class="pill hidden" data-state="locked" data-i18n="stSettingsLocked">Settings locked</span>
+      <!-- Applies at once, like the popup button. Turning it off asks for the password if one is set. -->
+      <label class="switch-label"><input id="enabled" class="switch" type="checkbox"> <span data-i18n="lblFocus">Focus</span></label>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div id="timer-line" class="banner hidden">
+    <span data-i18n="bannerLocked">Lock timer running. Settings are locked for</span>
+    <span id="timer" class="timer" role="timer"></span>
+  </div>
+
+  <section id="blocking" class="card" aria-labelledby="blocking-title">
+    <div class="card-head"><h2 id="blocking-title" data-i18n="cardBlocking">Blocking</h2></div>
+    <div class="stack-lg">
+      <fieldset class="field">
+        <legend class="field-label" data-i18n="lblMode">Mode</legend>
+        <div class="segmented">
+          <label class="segment"><input class="lockable" type="radio" name="mode" value="blocklist"><span data-i18n="modeBlocklist">Blocklist</span></label>
+          <label class="segment"><input class="lockable" type="radio" name="mode" value="allowlist"><span data-i18n="modeAllowlist">Allowlist</span></label>
+        </div>
+        <p class="hint" data-i18n="hintMode">Blocklist blocks only the sites listed. Allowlist allows only the sites listed and blocks everything else.</p>
+      </fieldset>
+
+      <div class="lists">
+        <div class="field list-block">
+          <label for="blocklist" class="field-label"><span data-i18n="modeBlocklist">Blocklist</span> <span class="tag" data-i18n="tagInUse">In use</span></label>
+          <textarea id="blocklist" class="lockable" spellcheck="false" placeholder="youtube.com&#10;tiktok.com" aria-describedby="blocklist-hint"></textarea>
+          <p id="blocklist-hint" class="hint" data-i18n="hintBlocklist">One domain per line. Subdomains are included: youtube.com also blocks m.youtube.com.</p>
+        </div>
+        <div class="field list-allow">
+          <label for="allowlist" class="field-label"><span data-i18n="modeAllowlist">Allowlist</span> <span class="tag" data-i18n="tagInUse">In use</span></label>
+          <textarea id="allowlist" class="lockable" spellcheck="false" placeholder="example.com" aria-describedby="allowlist-hint"></textarea>
+          <p id="allowlist-hint" class="hint" data-i18n="hintAllowlist">Used only in allowlist mode. If it is empty, every website is blocked.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section id="pomodoro" class="card" aria-labelledby="pomo-title">
+      <div class="card-head">
+        <div>
+          <h2 id="pomo-title" data-i18n="pomodoro">Pomodoro</h2>
+          <p class="hint" data-i18n="hintPomodoro">Work and break sessions repeat until you stop them. Sites are blocked only during work.</p>
+        </div>
+      </div>
+
+      <div id="pomo-status" class="pomo-now hidden">
+        <div id="pomo-ring" class="ring ring--sm" data-phase="work" style="--progress: 0" aria-hidden="true"></div>
+        <div>
+          <div class="countdown-label"><span data-i18n="pomoNow">Now:</span> <span id="pomo-phase"></span></div>
+          <div><span id="pomo-left" class="countdown countdown--md" role="timer"></span> <span class="muted" data-i18n="left">left</span></div>
+        </div>
+      </div>
+
+      <div class="stack-lg">
+        <div class="fields-grid">
+          <div class="field">
+            <label for="pomo-work" class="field-label" data-i18n="lblWork">Work</label>
+            <span class="with-unit"><input id="pomo-work" type="number" min="1" max="180"><span aria-hidden="true" data-i18n="unitMin">min</span></span>
+          </div>
+          <div class="field">
+            <label for="pomo-short" class="field-label" data-i18n="lblBreak">Break</label>
+            <span class="with-unit"><input id="pomo-short" type="number" min="1" max="60"><span aria-hidden="true" data-i18n="unitMin">min</span></span>
+          </div>
+          <div class="field">
+            <label for="pomo-long" class="field-label" data-i18n="lblLongBreak">Long break</label>
+            <span class="with-unit"><input id="pomo-long" type="number" min="1" max="120"><span aria-hidden="true" data-i18n="unitMin">min</span></span>
+          </div>
+          <div class="field">
+            <label for="pomo-cycles" class="field-label" data-i18n="lblCycles">Sessions before a long break</label>
+            <input id="pomo-cycles" type="number" min="1" max="12">
+          </div>
+        </div>
+
+        <fieldset class="field">
+          <legend class="field-label" data-i18n="lblBlockDuringWork">Block during work</legend>
+          <div class="segmented">
+            <label class="segment"><input type="radio" name="pomo-rules" value="custom"><span data-i18n="rulesCustom">These sites</span></label>
+            <label class="segment"><input type="radio" name="pomo-rules" value="main"><span data-i18n="rulesMain">Main mode and lists</span></label>
+          </div>
+        </fieldset>
+
+        <div class="field pomo-list">
+          <label for="pomo-blocklist" class="sr-only" data-i18n="lblPomoSites">Sites blocked during work</label>
+          <textarea id="pomo-blocklist" spellcheck="false" placeholder="youtube.com&#10;tiktok.com"></textarea>
+        </div>
+      </div>
+
+      <div class="card-foot">
+        <p class="hint" data-i18n="hintPomoApply">Changes apply to the next run. Stopping needs the password, if one is set.</p>
+        <div class="cluster">
+          <button id="pomo-start" class="primary" data-i18n="btnStartPomodoro">Start Pomodoro</button>
+          <button id="pomo-stop" class="danger hidden" data-i18n="btnStopPomodoro">Stop Pomodoro</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="locks" class="card" aria-labelledby="locks-title">
+      <div class="card-head"><h2 id="locks-title" data-i18n="cardLocks">Locks</h2></div>
+
+      <div class="card-sub stack-sm">
+        <h3 data-i18n="lblPassword">Password</h3>
+        <p id="password-state" class="hint"></p>
+        <div class="cluster">
+          <button id="set-password" class="lockable hidden" data-i18n="btnSetPassword">Set password</button>
+          <button id="change-password" class="lockable hidden" data-i18n="btnChangePassword">Change password</button>
+          <button id="remove-password" class="danger lockable hidden" data-i18n="btnRemovePassword">Remove password</button>
+        </div>
+      </div>
+
+      <div class="card-sub stack-sm">
+        <h3 data-i18n="lblLockTimer">Lock timer</h3>
+        <p class="hint" data-i18n="hintLockTimer">Blocks with the main mode and lists and locks every setting until the time is up. It cannot be stopped early, only extended. When it ends, everything goes back to how it was.</p>
+        <div class="row">
+          <label for="minutes" class="sr-only" data-i18n="lblTimerMinutes">Lock timer length in minutes</label>
+          <span class="with-unit"><input id="minutes" type="number" min="1" max="1440"><span aria-hidden="true" data-i18n="unitMin">min</span></span>
+          <button id="start-timer" data-i18n="btnStartTimer">Start lock timer</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- One save for the whole page; shown only when something is unsaved. -->
+<div id="savebar" class="savebar hidden" role="region" aria-label="Unsaved changes">
+  <span data-i18n="unsavedChanges">Unsaved changes</span>
+  <button id="discard" class="ghost" data-i18n="btnDiscard">Discard</button>
+  <button id="save" class="primary" data-i18n="btnSave">Save</button>
+</div>
+<p id="msg" class="msg toast" role="status" aria-live="polite"></p>
+<script src="../src/i18n.js"></script>
+<script src="common.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

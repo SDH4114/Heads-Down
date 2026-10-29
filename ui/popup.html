@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="popup">
+  <header class="popup-head">
+    <span class="brand"><span class="brand-mark" aria-hidden="true"></span><span data-i18n="extName">Focus Guard</span></span>
+    <span id="status" class="pill" data-state="off"></span>
+  </header>
+  <p id="summary" class="hint"></p>
+
+  <div id="timer-line" class="banner hidden">
+    <span data-i18n="lockedFor">Locked for</span>
+    <span id="timer" class="timer" role="timer"></span>
+  </div>
+
+  <div id="controls" class="stack">
+    <button id="toggle" class="primary lg block"></button>
+    <button id="add-site" class="block"></button>
+    <div class="field">
+      <label for="minutes" class="field-label" data-i18n="lblLockTimer">Lock timer</label>
+      <div class="row">
+        <span class="with-unit"><input id="minutes" type="number" min="1" max="1440"><span aria-hidden="true" data-i18n="unitMin">min</span></span>
+        <button id="start-timer" class="grow" data-i18n="btnStartTimer">Start lock timer</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="card" aria-labelledby="pomo-title">
+    <h2 id="pomo-title" data-i18n="pomodoro">Pomodoro</h2>
+    <div class="pomo-body">
+      <div id="pomo-ring" class="ring" data-phase="idle" style="--progress: 0">
+        <span id="pomo-time" class="countdown countdown--md" role="timer"></span>
+      </div>
+      <div class="stack-sm">
+        <p id="pomo-line" class="pomo-label"></p>
+        <button id="pomo-start" class="block" data-i18n="btnStartPomodoro">Start Pomodoro</button>
+        <button id="pomo-stop" class="danger block hidden" data-i18n="btnStop">Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <p id="msg" class="msg" role="status" aria-live="polite"></p>
+  <footer class="popup-foot">
+    <button id="open-options" class="ghost sm" data-i18n="btnSettings">Settings</button>
+  </footer>
+
+  <script src="../src/i18n.js"></script>
+  <script src="common.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
