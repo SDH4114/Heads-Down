@@ -64,3 +64,6 @@ tests/            node:test suites; tests/e2e/ Selenium scenario for Zen
 The password and timer protect the extension's own settings. The extension can still be disabled or removed in `about:addons`.
 
 Private windows are not covered until you allow the extension there: `about:addons` → Heads Down → **Run in Private Windows** → Allow.
+
+## License
+MIT, see [LICENSE](LICENSE).
