@@ -66,7 +66,7 @@ opts.binary_location = ZEN
 opts.add_argument("-headless")
 opts.set_preference("network.dns.localDomains", ",".join(DOMAINS))
 opts.set_preference(
-    "extensions.webextensions.uuids", json.dumps({"heads-down@amikolabs.com": UUID})
+    "extensions.webextensions.uuids", json.dumps({"heads-down@local": UUID})
 )
 opts.set_preference("browser.sessionstore.resume_from_crash", False)
 # Texts are checked in English; pin the UI locale regardless of the machine's language.

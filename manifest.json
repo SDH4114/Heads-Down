@@ -1,12 +1,12 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extName__",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "browser_specific_settings": {
     "gecko": {
-      "id": "heads-down@amikolabs.com",
+      "id": "heads-down@local",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["none"]
