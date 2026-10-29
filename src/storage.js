@@ -55,10 +55,13 @@
       pomodoroRun: null,
     };
     // A half-stored password would lock the user out; keep it only if complete.
-    if (isHex(s.passwordHash) && isHex(s.passwordSalt)) {
+    if (
+      isHex(s.passwordHash) && s.passwordHash.length === 64 && isHex(s.passwordSalt) &&
+      Number.isInteger(s.passwordIterations) && s.passwordIterations > 0 && s.passwordIterations <= 0xffffffff
+    ) {
       out.passwordHash = s.passwordHash;
       out.passwordSalt = s.passwordSalt;
-      out.passwordIterations = Number.isInteger(s.passwordIterations) && s.passwordIterations > 0 ? s.passwordIterations : lock.ITERATIONS;
+      out.passwordIterations = s.passwordIterations;
     }
     const run = s.pomodoroRun && cleanPomodoro(s.pomodoroRun);
     if (run && Number.isFinite(s.pomodoroRun.startedAt)) out.pomodoroRun = { ...run, startedAt: s.pomodoroRun.startedAt };
@@ -76,7 +79,14 @@
   async function load() {
     const stored = await browser.storage.local.get(null);
     const { state, changed } = sanitize(stored, Date.now());
-    if (changed) await browser.storage.local.set(state);
+    if (changed) {
+      try {
+        await browser.storage.local.set(state);
+      } catch (error) {
+        // A failed repair must not discard the rules we already read successfully.
+        console.error("Focus Guard could not persist repaired settings:", error);
+      }
+    }
     return state;
   }
 

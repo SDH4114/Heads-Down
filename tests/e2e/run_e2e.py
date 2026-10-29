@@ -1,7 +1,7 @@
 """E2E test of Focus Guard in a real Zen browser with a throwaway profile.
 
 Test domains resolve to 127.0.0.1 via network.dns.localDomains, served by a local http.server,
-so no real network is used. Takes about 1.5 minutes because of the 1-minute timer scenario.
+so no real network is used. Takes about 3 minutes, including the 1-minute lock timer and Pomodoro work scenarios.
 
 Usage: uv run --with selenium python tests/e2e/run_e2e.py <extension dir> <geckodriver path> [browser binary]
 """

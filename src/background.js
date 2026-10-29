@@ -12,8 +12,19 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !state) return;
   const merged = { ...state };
   for (const [key, { newValue }] of Object.entries(changes)) merged[key] = newValue;
-  state = storage.sanitize(merged, Date.now()).state;
+  replaceState(storage.sanitize(merged, Date.now()).state);
 });
+
+// A storage event can arrive before or after save() resolves. Apply effects once in either order,
+// including when settings were written by another extension page or an older background copy.
+function replaceState(next) {
+  const changed = (key) => JSON.stringify(state[key]) !== JSON.stringify(next[key]);
+  const runChanged = changed("pomodoroRun");
+  const rulesChanged = ["enabled", "mode", "blocklist", "allowlist", "timerEnd"].some(changed);
+  state = next;
+  if (runChanged) onPomodoroTick();
+  if (runChanged || rulesChanged) sweepTabs();
+}
 
 const blockReason = (url) => policy.blockReason(state, url, Date.now());
 const publicState = () => policy.publicState(state, Date.now());
@@ -26,7 +37,7 @@ function decide(details) {
 }
 
 browser.webRequest.onBeforeRequest.addListener(
-  (details) => (state ? decide(details) : ready.then(() => decide(details))),
+  (details) => (state ? decide(details) : ready.then(() => decide(details), () => ({}))),
   { urls: ["<all_urls>"], types: ["main_frame"] },
   ["blocking"]
 );
@@ -41,7 +52,13 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 // Tabs opened before blocking started are not caught by webRequest, so sweep them.
 async function sweepTabs() {
-  const tabs = await browser.tabs.query({});
+  let tabs;
+  try {
+    tabs = await browser.tabs.query({});
+  } catch (error) {
+    console.warn("Could not check open tabs:", error);
+    return;
+  }
   for (const tab of tabs) {
     if (tab.url && blockReason(tab.url)) {
       browser.tabs.update(tab.id, { url: blockedPage(tab.url) }).catch(() => {});
@@ -80,22 +97,27 @@ function onPomodoroTick() {
     sweepTabs();
   }
   lastPhaseKey = key;
-  phaseTimer = setTimeout(onPomodoroTick, Math.max(250, phase.phaseEnd - Date.now() + 250));
+  // A clock rollback can put the end beyond setTimeout's signed 32-bit delay limit.
+  phaseTimer = setTimeout(onPomodoroTick, Math.min(2147483647, Math.max(250, phase.phaseEnd - Date.now() + 250)));
 }
 
 async function assertUnlocked(password) {
-  if (timerOn()) fail("errTimerLocked");
-  if (
-    state.passwordHash &&
-    !(await lock.verifyPassword(password, state.passwordHash, state.passwordSalt, state.passwordIterations))
-  ) {
-    fail("errWrongPassword");
+  for (;;) {
+    if (timerOn()) fail("errTimerLocked");
+    const { passwordHash, passwordSalt, passwordIterations } = state;
+    if (!passwordHash) return;
+    const valid = await lock.verifyPassword(password, passwordHash, passwordSalt, passwordIterations);
+    // storage.onChanged is outside the message queue and can change the lock during PBKDF2.
+    if (timerOn()) fail("errTimerLocked");
+    if (passwordHash !== state.passwordHash || passwordSalt !== state.passwordSalt || passwordIterations !== state.passwordIterations) continue;
+    if (!valid) fail("errWrongPassword");
+    return;
   }
 }
 
 async function commit(patch) {
   await storage.save(patch);
-  Object.assign(state, patch);
+  replaceState({ ...state, ...patch });
 }
 
 async function applyUpdate(patch, password) {
@@ -103,7 +125,6 @@ async function applyUpdate(patch, password) {
   if (!Object.keys(clean).length) return publicState();
   if (!policy.isTightening(clean, state)) await assertUnlocked(password);
   await commit(clean);
-  sweepTabs();
   return publicState();
 }
 
@@ -138,6 +159,7 @@ const handlers = {
     await assertUnlocked(password);
     if (typeof newPassword !== "string" || newPassword.length < 4) fail("errPasswordShort");
     const { hash, salt, iterations } = await lock.hashPassword(newPassword);
+    await assertUnlocked(password);
     await commit({ passwordHash: hash, passwordSalt: salt, passwordIterations: iterations });
     return publicState();
   }),
@@ -159,7 +181,6 @@ const handlers = {
     const end = Date.now() + m * 60 * 1000;
     if (timerOn() && end <= state.timerEnd) fail("errTimerExtendOnly");
     await commit({ timerEnd: end, timerMinutes: m });
-    sweepTabs();
     return publicState();
   }),
 
@@ -189,8 +210,6 @@ const handlers = {
     policy.assertPomodoroBlocksSomething(cfg, state);
     await commit({ pomodoroRun: { ...cfg, startedAt: Date.now() } });
     notify(phaseText("work", cfg));
-    onPomodoroTick();
-    sweepTabs();
     return publicState();
   }),
 
@@ -199,16 +218,15 @@ const handlers = {
     if (!state.pomodoroRun) return publicState();
     await assertUnlocked(password);
     await commit({ pomodoroRun: null });
-    onPomodoroTick();
     return publicState();
   }),
 };
 
 browser.runtime.onMessage.addListener(async (msg) => {
-  await ready;
-  const handler = handlers[msg && msg.type];
-  if (!handler) return { ok: false, error: t("errUnknownRequest") };
   try {
+    await ready;
+    const handler = msg && typeof msg.type === "string" && Object.hasOwn(handlers, msg.type) && handlers[msg.type];
+    if (!handler) return { ok: false, error: t("errUnknownRequest") };
     return { ok: true, state: await handler(msg) };
   } catch (e) {
     return { ok: false, error: e.message, code: e.code };
@@ -218,4 +236,6 @@ browser.runtime.onMessage.addListener(async (msg) => {
 ready.then(() => {
   onPomodoroTick();
   sweepTabs();
+}).catch((error) => {
+  console.error("Could not load settings:", error);
 });

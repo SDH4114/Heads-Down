@@ -30,6 +30,14 @@ function formSection(fields) {
       for (const [key, f] of Object.entries(fields)) if (!same(f.read(), base[key])) out[key] = f.read();
       return out;
     },
+    accept(source, submitted) {
+      for (const [key, value] of Object.entries(submitted)) {
+        const f = fields[key];
+        if (same(f.read(), value)) f.write(f.from(source));
+        base[key] = f.from(source);
+      }
+      this.fill(source);
+    },
     isDirty() {
       return Object.keys(this.edited()).length > 0;
     },
@@ -51,6 +59,8 @@ const mainForm = formSection({
   blocklist: textList("blocklist", (s) => s.blocklist),
   allowlist: textList("allowlist", (s) => s.allowlist),
 });
+
+const timerForm = formSection({ timerMinutes: number("minutes", (s) => String(s.timerMinutes)) });
 
 const pomoForm = formSection({
   workMin: number("pomo-work", (s) => String(s.pomodoro.workMin)),
@@ -92,7 +102,7 @@ function renderStatus() {
   $("pomo-start").classList.toggle("hidden", Boolean(pomo));
   $("pomo-stop").classList.toggle("hidden", !pomo);
   $("pomo-stop").disabled = timerOn;
-  if (document.activeElement !== $("minutes") && !$("minutes").value) $("minutes").value = state.timerMinutes;
+  timerForm.fill(state, { force: !formsFilled });
 
   countdowns.forEach(clearInterval);
   countdowns = [];
@@ -141,6 +151,7 @@ async function run(action, okText) {
 $("enabled").addEventListener("change", () => {
   const enabled = $("enabled").checked;
   $("enabled").checked = state.enabled; // shows the real state until the background confirms
+  if (enabled && state.mode === "allowlist" && !state.allowlist.length && !confirm(t("confirmEmptyAllowlist"))) return;
   run(() => withPassword((password) => send("update", { patch: { enabled }, password })));
 });
 
@@ -156,8 +167,9 @@ async function saveAll() {
     // Pomodoro first: it never needs the password, so a cancelled password prompt for the
     // main settings does not lose it.
     if (pomoForm.isDirty()) {
-      state = await send("savePomodoro", { config: pomoForm.values() });
-      pomoForm.fill(state, { force: true });
+      const config = pomoForm.values();
+      state = await send("savePomodoro", { config });
+      pomoForm.accept(state, config);
     }
     if (Object.keys(main).length) {
       const result = await withPassword((password) => send("update", { patch: main, password }));
@@ -166,7 +178,7 @@ async function saveAll() {
         return false;
       }
       state = result;
-      mainForm.fill(state, { force: true });
+      mainForm.accept(state, main);
     }
     renderStatus();
     toast(t("msgSaved"));
@@ -194,6 +206,7 @@ window.addEventListener("beforeunload", (e) => {
 // Start saves pending changes first, so what you see is what runs.
 $("pomo-start").addEventListener("click", async () => {
   if (isDirty() && !(await saveAll())) return;
+  if (isDirty()) return;
   run(() => send("startPomodoro"), t("msgPomodoroStarted"));
 });
 
@@ -254,9 +267,16 @@ $("remove-password").addEventListener("click", () =>
 );
 
 // --- Lock timer ---
-$("minutes").addEventListener("change", () =>
-  send("saveTimerMinutes", { minutes: $("minutes").value }).catch((e) => toast(e.message, true))
-);
+$("minutes").addEventListener("change", async () => {
+  const minutes = $("minutes").value;
+  try {
+    state = await send("saveTimerMinutes", { minutes });
+    timerForm.accept(state, { timerMinutes: minutes });
+    renderStatus();
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
 
 $("start-timer").addEventListener("click", () => {
   const m = $("minutes").value;

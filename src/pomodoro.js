@@ -37,13 +37,14 @@
     const short = run.shortMin * MIN;
     const long = run.longMin * MIN;
     const round = run.cycles * work + (run.cycles - 1) * short + long;
-    let t = Math.max(0, now - run.startedAt) % round;
+    const current = Math.max(now, run.startedAt);
+    let t = (current - run.startedAt) % round;
     for (let cycle = 1; cycle <= run.cycles; cycle++) {
-      if (t < work) return { phase: "work", cycle, phaseEnd: now - t + work };
+      if (t < work) return { phase: "work", cycle, phaseEnd: current - t + work };
       t -= work;
       const isLong = cycle === run.cycles;
       const pause = isLong ? long : short;
-      if (t < pause) return { phase: isLong ? "longBreak" : "break", cycle, phaseEnd: now - t + pause };
+      if (t < pause) return { phase: isLong ? "longBreak" : "break", cycle, phaseEnd: current - t + pause };
       t -= pause;
     }
     throw new Error("unreachable: offset is always inside a round");

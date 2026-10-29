@@ -74,6 +74,7 @@ function makeClock(start = Date.UTC(2026, 0, 1, 9)) {
     setTimeout: (fn, ms) => (timers.push({ id: nextId, at: now + ms, fn }), nextId++),
     clearTimeout: (id) => (timers = timers.filter((t) => t.id !== id)),
     pending: () => timers.length,
+    delays: () => timers.map((t) => t.at - now),
     advance(ms) {
       const end = now + ms;
       for (;;) {
@@ -88,14 +89,17 @@ function makeClock(start = Date.UTC(2026, 0, 1, 9)) {
   };
 }
 
-async function boot(initial, tabs, clock = makeClock()) {
+async function boot(initial, tabs, clock = makeClock(), configure = () => {}) {
   const env = makeBrowser(initial, tabs);
+  configure(env);
+  const warnings = [];
+  const errors = [];
   const ctx = vm.createContext({
     browser: env.browser,
     crypto,
     URL,
     TextEncoder,
-    console,
+    console: { ...console, warn: (...args) => warnings.push(args), error: (...args) => errors.push(args) },
     Date: clock.Date,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
@@ -112,7 +116,8 @@ async function boot(initial, tabs, clock = makeClock()) {
     clock.advance(ms);
     await new Promise((r) => setImmediate(r));
   };
-  return { ...env, send, request, clock, advance };
+  return { ...env, send, request, clock, advance, warnings, errors, lock: ctx.FG.lock,
+    sweep: () => vm.runInContext("sweepTabs()", ctx) };
 }
 
 const MIN = 60 * 1000;
@@ -514,4 +519,130 @@ test("addSite refuses non-web pages; unknown messages fail cleanly", async () =>
   assert.equal((await b.send("addSite", {})).ok, false);
   assert.equal((await b.send("nope")).ok, false);
   assert.equal((await b.listeners.message[0](undefined)).ok, false);
+});
+
+test("inherited object methods are not runtime handlers", async () => {
+  const b = await boot();
+  for (const type of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+    const res = await b.send(type);
+    assert.equal(res.ok, false, type);
+    assert.equal(res.error, "Unknown request.", type);
+  }
+});
+
+test("external storage changes sweep sites that become blocked", async () => {
+  const b = await boot({ blocklist: ["youtube.com"] }, [{ id: 9, url: "https://youtube.com/" }]);
+  assert.equal(b.updates.length, 0);
+  await b.browser.storage.local.set({ enabled: true });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(b.updates.map((u) => u.id), [9]);
+});
+
+test("externally started and stopped pomodoros synchronize phase timers", async () => {
+  const b = await boot();
+  await b.browser.storage.local.set({ pomodoroRun: { ...POMO, startedAt: b.clock.Date.now() } });
+  await b.advance(25 * MIN + 1000);
+  assert.ok(b.notifications.includes("Break: 5 min. Sites are open."));
+  await b.browser.storage.local.set({ pomodoroRun: null });
+  assert.equal(b.clock.pending(), 0);
+});
+
+test("a failed tab query does not reject background sweeps", async () => {
+  const b = await boot();
+  b.browser.tabs.query = async () => { throw new Error("Tab query unavailable"); };
+  await assert.doesNotReject(b.sweep());
+});
+
+test("failed writes preserve blocking and do not poison later queued changes", async () => {
+  const b = await boot({ enabled: true, blocklist: ["youtube.com"] });
+  const save = b.browser.storage.local.set;
+  b.browser.storage.local.set = async () => { throw new Error("Storage unavailable"); };
+  const res = await b.send("update", { patch: { enabled: false } });
+  assert.equal(res.ok, false);
+  assert.equal(res.error, "Storage unavailable");
+  assert.equal(await b.request("https://youtube.com/"), "blocked");
+  b.browser.storage.local.set = save;
+  assert.equal((await b.send("update", { patch: { enabled: false } })).ok, true);
+  assert.equal(await b.request("https://youtube.com/"), "allowed");
+});
+
+test("a failed startup repair write keeps the loaded blocking rules", async () => {
+  const b = await boot({ enabled: true, schemaVersion: 1, blocklist: ["youtube.com"] }, [], makeClock(), ({ browser }) => {
+    browser.storage.local.set = async () => { throw new Error("Storage unavailable"); };
+  });
+  assert.equal(await b.request("https://youtube.com/"), "blocked");
+  assert.equal(b.errors.length, 1);
+});
+
+test("an external lock timer arriving during password verification prevents loosening", async () => {
+  const b = await boot({ enabled: true, blocklist: ["youtube.com"] });
+  await b.send("setPassword", { newPassword: "secret" });
+  let release;
+  let entered;
+  const waiting = new Promise((r) => { entered = r; });
+  const gate = new Promise((r) => { release = r; });
+  const verify = b.lock.verifyPassword;
+  b.lock.verifyPassword = async (...args) => { entered(); await gate; return verify(...args); };
+  const update = b.send("update", { patch: { enabled: false }, password: "secret" });
+  await waiting;
+  await b.browser.storage.local.set({ timerEnd: b.clock.Date.now() + 5 * MIN });
+  release();
+  const res = await update;
+  assert.equal(res.ok, false);
+  assert.equal(res.code, "errTimerLocked");
+  assert.equal((await b.send("getState")).state.enabled, true);
+});
+
+test("an externally replaced password invalidates an in-flight password check", async () => {
+  const b = await boot({ enabled: true, blocklist: ["youtube.com"] });
+  await b.send("setPassword", { newPassword: "secret" });
+  const replacement = await b.lock.hashPassword("changed");
+  let release;
+  let entered;
+  const waiting = new Promise((r) => { entered = r; });
+  const gate = new Promise((r) => { release = r; });
+  const verify = b.lock.verifyPassword;
+  b.lock.verifyPassword = async (...args) => { entered(); await gate; return verify(...args); };
+  const update = b.send("update", { patch: { enabled: false }, password: "secret" });
+  await waiting;
+  await b.browser.storage.local.set({ passwordHash: replacement.hash, passwordSalt: replacement.salt });
+  release();
+  const res = await update;
+  assert.equal(res.ok, false);
+  assert.equal(res.code, "errWrongPassword");
+  assert.equal((await b.send("getState")).state.enabled, true);
+});
+
+test("an external lock arriving while a new password is hashed prevents its commit", async () => {
+  const b = await boot({ blocklist: ["youtube.com"] });
+  let release;
+  let entered;
+  const waiting = new Promise((r) => { entered = r; });
+  const gate = new Promise((r) => { release = r; });
+  const hash = b.lock.hashPassword;
+  b.lock.hashPassword = async (...args) => { entered(); await gate; return hash(...args); };
+  const setting = b.send("setPassword", { newPassword: "secret" });
+  await waiting;
+  await b.browser.storage.local.set({ timerEnd: b.clock.Date.now() + 5 * MIN });
+  release();
+  assert.equal((await setting).code, "errTimerLocked");
+  assert.equal((await b.send("getState")).state.hasPassword, false);
+});
+
+test("a startup read failure returns an error without breaking requests", async () => {
+  const b = await boot({}, [], makeClock(), ({ browser }) => {
+    browser.storage.local.get = async () => { throw new Error("Storage unavailable"); };
+  });
+  const res = await b.send("getState");
+  assert.equal(res.ok, false);
+  assert.equal(res.error, "Storage unavailable");
+  assert.equal(await b.request("https://youtube.com/"), "allowed");
+  assert.equal(b.errors.length, 1);
+});
+
+test("clock rollback cannot overflow the pomodoro timeout", async () => {
+  const clock = makeClock();
+  const b = await boot({ pomodoroRun: { ...POMO, startedAt: clock.Date.now() + 40 * 24 * 60 * MIN } }, [], clock);
+  assert.ok(b.clock.delays()[0] <= 2147483647);
+  assert.ok(b.clock.delays()[0] >= 250);
 });

@@ -5,8 +5,8 @@ A Firefox / Zen extension that blocks distracting websites, with a Pomodoro time
 - **Blocklist mode**: block only the domains you list.
 - **Allowlist mode**: allow only the domains you list, block every other website.
 - **Pomodoro**: work and break sessions with sites blocked only during work. You set the work, break and long-break lengths, how many work sessions come before a long break (default 4, long break 20 min), and which sites to block (its own list, or the main mode and lists). A notification marks each phase change.
-- **Password lock**: turning focus off, stopping a Pomodoro, or changing any setting needs the password.
-- **Lock timer**: blocks with the main rules and locks the settings until the time is up. It can be extended, not stopped. When it ends, everything goes back to how it was.
+- **Password lock**: turning focus off, stopping a Pomodoro, changing the password, or loosening the main rules needs the password. Tightening the rules and saving settings for the next Pomodoro run do not.
+- **Lock timer**: blocks with the main rules and prevents loosening them, stopping a Pomodoro, or changing the password until the time is up. It can be extended, not stopped. Changes that tighten the rules remain after it ends.
 - Lists start empty; you decide what goes in them. A domain entry also covers its subdomains.
 - Interface in English and Russian (follows the browser language), light and dark themes.
 

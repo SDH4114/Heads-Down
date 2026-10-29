@@ -22,7 +22,7 @@
   }
 
   function timerActive(timerEnd, now) {
-    return typeof timerEnd === "number" && timerEnd > now;
+    return Number.isFinite(timerEnd) && timerEnd > now;
   }
 
   const api = { ITERATIONS, hashPassword, verifyPassword, timerActive };

@@ -60,16 +60,20 @@ function formDialog({ title, text, fields = [], submitLabel, danger = false, act
     dlg.append(form);
 
     let result = null;
+    let busy = false;
     const finish = () => dlg.close();
-    cancel.addEventListener("click", finish);
+    cancel.addEventListener("click", () => { if (!busy) finish(); });
+    dlg.addEventListener("cancel", (e) => { if (busy) e.preventDefault(); });
     dlg.addEventListener("close", () => {
       dlg.remove();
       resolve(result);
     });
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (busy) return;
       const values = Object.fromEntries(inputs.map((i) => [i.name, i.value]));
-      submit.disabled = true;
+      busy = true;
+      submit.disabled = cancel.disabled = true;
       error.textContent = "";
       try {
         result = await action(values);
@@ -78,7 +82,8 @@ function formDialog({ title, text, fields = [], submitLabel, danger = false, act
         error.textContent = err.message;
         if (inputs[0]) inputs[0].select();
       } finally {
-        submit.disabled = false;
+        busy = false;
+        submit.disabled = cancel.disabled = false;
       }
     });
 

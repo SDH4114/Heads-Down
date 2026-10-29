@@ -45,7 +45,7 @@ test("blockReason priority and phases", () => {
 
 test("publicState hides secrets and adds phaseStart", () => {
   const run = { workMin: 25, shortMin: 5, longMin: 20, cycles: 4, useMainRules: false, blocklist: ["a.com"], startedAt: NOW };
-  const s = base({ passwordHash: "ab", passwordSalt: "cd", pomodoroRun: run });
+  const s = base({ passwordHash: "ab".repeat(32), passwordSalt: "cd", pomodoroRun: run });
   const p = policy.publicState(s, NOW + 10 * MIN);
   assert.equal(p.hasPassword, true);
   assert.ok(!("passwordHash" in p) && !("passwordSalt" in p));
@@ -65,4 +65,26 @@ test("sanitize is idempotent and reports changes", () => {
 test("sanitize drops an expired timer and keeps an active one", () => {
   assert.equal(base({ timerEnd: NOW - 1 }).timerEnd, null);
   assert.equal(base({ timerEnd: NOW + 1 }).timerEnd, NOW + 1);
+});
+
+test("sanitize drops a truncated password hash that can never verify", () => {
+  const s = base({ passwordHash: "ab", passwordSalt: "cd" });
+  assert.equal(policy.publicState(s, NOW).hasPassword, false);
+  assert.equal(s.passwordSalt, null);
+});
+
+test("sanitize drops passwords with iterations outside WebCrypto's range", () => {
+  for (const iterations of [4294967296, Number.MAX_SAFE_INTEGER]) {
+    const s = base({ passwordHash: "ab".repeat(32), passwordSalt: "cd", passwordIterations: iterations });
+    assert.equal(policy.publicState(s, NOW).hasPassword, false);
+  }
+});
+
+test("sanitize drops infinite timers instead of locking settings forever", () => {
+  assert.equal(base({ timerEnd: Infinity }).timerEnd, null);
+});
+
+test("sanitize discards non-string domains without breaking startup", () => {
+  const s = base({ blocklist: ["youtube.com", { toString: null }, ["example.com"]] });
+  assert.deepEqual(s.blocklist, ["youtube.com"]);
 });

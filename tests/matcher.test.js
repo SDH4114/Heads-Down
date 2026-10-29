@@ -91,3 +91,13 @@ test("timerActive compares against an absolute end time", () => {
   assert.equal(timerActive(1000, 1000), false);
   assert.equal(timerActive(null, 1000), false);
 });
+
+test("normalizeDomain rejects abbreviated IPs even when path contains the full address", () => {
+  assert.equal(normalizeDomain("127.1/127.0.0.1"), "");
+  assert.equal(normalizeDomain("https://2130706433/?ip=127.0.0.1"), "");
+  assert.equal(normalizeDomain("https://127.0.0.1/path"), "127.0.0.1");
+});
+
+test("timerActive rejects non-finite stored deadlines", () => {
+  assert.equal(timerActive(Infinity, 1000), false);
+});

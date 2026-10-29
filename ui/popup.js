@@ -63,14 +63,27 @@ async function run(action) {
   }
 }
 
-$("toggle").addEventListener("click", () =>
-  run(() => withPassword((password) => send("update", { patch: { enabled: !state.enabled }, password })))
-);
+$("toggle").addEventListener("click", () => {
+  const enabled = !state.enabled;
+  if (enabled && state.mode === "allowlist" && !state.allowlist.length) {
+    run(() => formDialog({
+      title: t("btnFocusOn"),
+      text: t("confirmEmptyAllowlist"),
+      submitLabel: t("btnFocusOn"),
+      action: () => send("update", { patch: { enabled } }),
+    }));
+    return;
+  }
+  run(() => withPassword((password) => send("update", { patch: { enabled }, password })));
+});
 
 $("add-site").addEventListener("click", () =>
   run(async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    return withPassword((password) => send("addSite", { url: tab && tab.url, password }));
+    let url = tab && tab.url;
+    const blockedPage = browser.runtime.getURL("ui/blocked.html");
+    if (url && url.startsWith(blockedPage + "?")) url = new URL(url).searchParams.get("url");
+    return withPassword((password) => send("addSite", { url, password }));
   })
 );
 

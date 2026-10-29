@@ -60,3 +60,9 @@ test("validateConfig rejects out-of-range and fractional values", () => {
     assert.throws(() => validateConfig(bad), /whole number/, JSON.stringify(bad));
   }
 });
+
+test("clock before start keeps the absolute first phase boundary", () => {
+  const r = run({ startedAt: 10 * MIN });
+  assert.equal(phaseAt(r, 0).phaseEnd, 35 * MIN);
+  assert.equal(phaseAt(r, 5 * MIN).phaseEnd, 35 * MIN);
+});

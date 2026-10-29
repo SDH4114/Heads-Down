@@ -3,8 +3,9 @@
   // "https://www.YouTube.com/watch?v=1" -> "youtube.com"; returns "" for junk input.
   // Parsing through URL gives the same punycode form as real hostnames ("пример.рф" -> "xn--...").
   function normalizeDomain(input) {
+    if (typeof input !== "string") return "";
     // "*.x.com" and cookie-style ".x.com" both mean x.com and its subdomains.
-    let s = String(input || "").trim().toLowerCase().replace(/^\*\./, "").replace(/^\.+/, "");
+    let s = input.trim().toLowerCase().replace(/^\*\./, "").replace(/^\.+/, "");
     if (!s) return "";
     if (!/^[a-z][a-z0-9+.-]*:\/\//.test(s)) s = "http://" + s;
     let url;
@@ -18,7 +19,11 @@
     if (!host.includes(".") && host !== "localhost") return "";
     if (host.split(".").some((label) => !label)) return ""; // "x..com", ".x.com" never match
     // The URL parser turns "5" or "1.2" into IPv4 ("0.0.0.5"); accept an IP only if typed in full.
-    if (/^\d+(\.\d+){3}$/.test(host) && !s.includes(host)) return "";
+    if (/^\d+(\.\d+){3}$/.test(host)) {
+      const authority = s.slice(s.indexOf("://") + 3).split(/[/?#]/, 1)[0];
+      const typedHost = authority.slice(authority.lastIndexOf("@") + 1).replace(/:\d*$/, "").replace(/\.$/, "").replace(/^www\./, "");
+      if (typedHost !== host) return "";
+    }
     return host;
   }
 
